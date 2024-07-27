@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey, ARRAY
+from sqlalchemy import String, DateTime, ForeignKey, ARRAY, Boolean, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
@@ -11,19 +11,24 @@ from db.base_class import Base
 class Conversation(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
-    message: Mapped[str] = mapped_column(String, nullable=False)
-    response: Mapped[str] = mapped_column(String, nullable=False)
-    context: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    topics: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, index=True)
+    dm_channel_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False, server_default='')
+    topics: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, server_default='{}')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    is_analyzed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     user: Mapped["User"] = relationship("User", back_populates="conversations")
-    
-    parent_id: Mapped[Optional[UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("conversation.id"), nullable=True)
-    children: Mapped[List["Conversation"]] = relationship(
-        "Conversation",
-        backref=relationship("Conversation", remote_side=[id]),
-        cascade="all, delete-orphan"
-    )
+    messages: Mapped[List["Message"]] = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+
+class Message(Base):
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
+    conversation_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("conversation.id"), nullable=False)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    is_from_user: Mapped[bool] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
 
 from models.user import User

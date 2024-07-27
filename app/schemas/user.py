@@ -8,7 +8,7 @@ from .memory import Memory
 from .pal import Pal
 
 class UserBase(BaseModel):
-    discord_id: str
+    discord_id: int
     name: str
     birthday: Optional[datetime] = None
     occupation: Optional[str] = None
@@ -29,8 +29,6 @@ class UserUpdate(BaseModel):
 
 class User(UserBase):
     id: UUID
-    created_at: datetime
-    updated_at: datetime
     conversations: List[Conversation] = []
     pal: Optional[Pal] = None
     memories: List[Memory] = []

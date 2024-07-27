@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, DateTime, JSONB, ARRAY
+from sqlalchemy import String, DateTime, JSONB, ARRAY, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
@@ -10,7 +10,7 @@ from db.base_class import Base
 
 class User(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
-    discord_id: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    discord_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     birthday: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     occupation: Mapped[Optional[str]] = mapped_column(String, nullable=True)
