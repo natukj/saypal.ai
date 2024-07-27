@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "saypal-ai"
+version = "0.1.0"
+description = ""
+authors = ["qxd"]
+readme = "README.md"
+packages = [{include = "saypal"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.111.1"
+uvicorn = "^0.30.3"
+sqlalchemy = "^2.0.31"
+asyncio = "^3.4.3"
+asyncpg = "^0.29.0"
+alembic = "^1.13.2"
+python-dotenv = "^1.0.1"
+discord-py = "^2.4.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
