@@ -12,7 +12,7 @@ from db.base_class import Base
 class Conversation(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
-    discord_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True, index=True)
+    discord_id: Mapped[int] = mapped_column(BigInteger, unique=False, nullable=True, index=True)
     dm_channel_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False, server_default='')
     topics: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, server_default='{}')

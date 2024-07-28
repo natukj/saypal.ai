@@ -11,7 +11,7 @@ from db.base_class import Base
 class Memory(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
-    discord_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True, index=True)
+    discord_id: Mapped[int] = mapped_column(BigInteger, unique=False, nullable=True, index=True)
     conversation_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("conversation.id"), nullable=False)
     content: Mapped[str] = mapped_column(String, nullable=False)
     importance: Mapped[int] = mapped_column(Integer, CheckConstraint('importance BETWEEN 1 AND 10'), nullable=False)

@@ -18,7 +18,6 @@ from schemas.memory import MemoryCreate
 from models.user import User
 from models.conversation import Conversation
 
-# Create async engine and session
 engine = create_async_engine(settings.SQLALCHEMY_DATABASE_URI)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -57,16 +56,15 @@ async def create_test_users(db: AsyncSession):
     return [user.id for user in created_users]
 
 async def create_test_conversations(db: AsyncSession, users):
-    for user in users:
+    for i, user in enumerate(users):
         conv_create = ConversationCreate(
-            user_identifier=user.discord_id,  # or user.id if you prefer to use UUID
-            dm_channel_id=9876543213,  
+            user_identifier=user.discord_id,  # or user.id
+            dm_channel_id=987654321 + i, # dont have to include  
             title="Test Conversation",
             topics=["AI", "Machine Learning"]
         )
         db_conv = await crud_conversation.create_with_messages(db, obj_in=conv_create)
         
-        # Add some messages to the conversation
         messages = [
             MessageCreate(content="Hello, AI!", is_from_user=True),
             MessageCreate(content="Hello! How can I assist you today?", is_from_user=False),
@@ -101,7 +99,6 @@ async def fetch_all_conversations(db: AsyncSession):
 
 async def create_test_memories(db: AsyncSession, users, conversations):
     for user in users:
-        # Use the first conversation from the list of all conversations
         if conversations:
             conversation = conversations[0]
             memories = [
@@ -124,11 +121,11 @@ async def create_test_memories(db: AsyncSession, users, conversations):
         else:
             print("No conversations found, skipping memory creation.")
 
-async def main_1():
+async def main():
     async with AsyncSessionLocal() as session:
+        # Operations from main_1
         user_ids = await create_test_users(session)
         
-        # Fetch users with their conversations
         stmt = select(User).where(User.id.in_(user_ids)).options(selectinload(User.conversations))
         result = await session.execute(stmt)
         users = result.scalars().all()
@@ -136,8 +133,7 @@ async def main_1():
         await create_test_conversations(session, users)
         await create_test_pals(session, users)
 
-async def main_2():
-    async with AsyncSessionLocal() as session:
+        # Operations from main_2
         users = await fetch_users_and_conversations(session)
         conversations = await fetch_all_conversations(session)
         
@@ -150,5 +146,4 @@ async def main_2():
         await create_test_memories(session, users, conversations)
 
 if __name__ == "__main__":
-    asyncio.run(main_1())
-    asyncio.run(main_2())
+    asyncio.run(main())

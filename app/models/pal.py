@@ -11,7 +11,7 @@ from db.base_class import Base
 class Pal(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("user.id"), unique=True, nullable=False)
-    discord_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True, index=True)
+    discord_id: Mapped[int] = mapped_column(BigInteger, unique=False, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     personality: Mapped[dict] = mapped_column(JSONB, nullable=False)
     relationship_status: Mapped[str] = mapped_column(String, nullable=False, default="Just met")
