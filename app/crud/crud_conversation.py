@@ -1,168 +1,105 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_, join
-from sqlalchemy.orm import selectinload
+from typing import List, Optional, Union
 from uuid import UUID
-from typing import List, Optional
-from datetime import datetime, timedelta
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, update
+from sqlalchemy.orm import selectinload
 
-
-from models.conversation import Conversation, Message
+from crud.crud_base import CRUDBase
 from models.user import User
+from models.conversation import Conversation, Message
 from schemas.conversation import ConversationCreate, ConversationUpdate, MessageCreate
+from db.operations import set_active_conversation
 
-async def create_conversation(db: AsyncSession, conversation: ConversationCreate, discord_id: int) -> Conversation:
-    user_query = select(User.id).where(User.discord_id == discord_id)
-    user_result = await db.execute(user_query)
-    user_id = user_result.scalar_one_or_none()
-    
-    if not user_id:
-        raise ValueError(f"No user found with discord_id: {discord_id}")
+class CRUDConversation(CRUDBase[Conversation, ConversationCreate, ConversationUpdate]):
+    async def create_with_messages(self, db: AsyncSession, *, obj_in: ConversationCreate) -> Conversation:
+        user_id, discord_id = await self.get_user_info(db, obj_in.user_identifier)
 
-    await db.execute(
-        update(Conversation)
-        .where(and_(Conversation.user_id == user_id, Conversation.is_active == True))
-        .values(is_active=False)
-    )
-    
-    db_conversation = Conversation(**conversation.model_dump(), user_id=user_id, is_active=True)
-    db.add(db_conversation)
-    await db.commit()
-    await db.refresh(db_conversation)
-    return db_conversation
+        await db.execute(
+            update(Conversation)
+            .where(and_(Conversation.user_id == user_id, Conversation.is_active == True))
+            .values(is_active=False)
+        )
+        
+        db_obj = Conversation(
+            user_id=user_id,
+            discord_id=discord_id,
+            dm_channel_id=obj_in.dm_channel_id,
+            title=obj_in.title,
+            topics=obj_in.topics,
+            is_active=True,
+            is_analyzed=False
+        )
+        db.add(db_obj)
+        await db.commit()
+        await db.refresh(db_obj)
+        
+        # set active conversation
+        await set_active_conversation(db, user_id, db_obj.id)
+        return db_obj
 
-async def get_conversation(db: AsyncSession, conversation_id: UUID) -> Optional[Conversation]:
-    query = select(Conversation).options(selectinload(Conversation.messages)).where(Conversation.id == conversation_id)
-    result = await db.execute(query)
-    return result.scalar_one_or_none()
+    async def get_user_info(self, db: AsyncSession, user_identifier: Union[UUID, int]) -> tuple[UUID, Optional[int]]:
+        if isinstance(user_identifier, UUID):
+            stmt = select(User.id, User.discord_id).where(User.id == user_identifier)
+        else:
+            stmt = select(User.id, User.discord_id).where(User.discord_id == user_identifier)
+        
+        result = await db.execute(stmt)
+        user_info = result.first()
+        
+        if user_info is None:
+            raise ValueError(f"No user found with identifier {user_identifier}")
+        
+        return user_info.id, user_info.discord_id
 
-async def get_active_conversation(db: AsyncSession, discord_id: int) -> Optional[Conversation]:
-    query = select(Conversation).join(User).where(
-        and_(User.discord_id == discord_id, Conversation.is_active == True)
-    )
-    result = await db.execute(query)
-    return result.scalar_one_or_none()
+    async def get_with_messages(self, db: AsyncSession, id: UUID) -> Optional[Conversation]:
+        query = select(Conversation).options(selectinload(Conversation.messages)).where(Conversation.id == id)
+        result = await db.execute(query)
+        return result.scalars().first()
 
-async def get_conversations(db: AsyncSession, discord_id: int, skip: int = 0, limit: int = 100) -> List[Conversation]:
-    query = select(Conversation).join(User).where(User.discord_id == discord_id).offset(skip).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
+    async def get_active_by_user(self, db: AsyncSession, user_id: UUID) -> List[Conversation]:
+        query = select(Conversation).where(and_(Conversation.user_id == user_id, Conversation.is_active == True))
+        result = await db.execute(query)
+        return result.scalars().all()
 
-async def update_conversation(db: AsyncSession, conversation_id: UUID, conversation_update: ConversationUpdate) -> Optional[Conversation]:
-    db_conversation = await get_conversation(db, conversation_id)
-    if db_conversation is None:
-        return None
-    
-    update_data = conversation_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(db_conversation, field, value)
-    
-    await db.commit()
-    await db.refresh(db_conversation)
-    return db_conversation
+    async def get_by_discord_id(self, db: AsyncSession, discord_id: int) -> List[Conversation]:
+        query = select(Conversation).where(Conversation.discord_id == discord_id)
+        result = await db.execute(query)
+        return result.scalars().all()
 
-async def delete_conversation(db: AsyncSession, conversation_id: UUID) -> bool:
-    db_conversation = await get_conversation(db, conversation_id)
-    if db_conversation is None:
-        return False
-    
-    await db.delete(db_conversation)
-    await db.commit()
-    return True
+    async def add_message(self, db: AsyncSession, *, conversation_id: UUID, message: MessageCreate) -> Message:
+        db_message = Message(
+            conversation_id=conversation_id,
+            content=message.content,
+            is_from_user=message.is_from_user
+        )
+        db.add(db_message)
+        await db.commit()
+        await db.refresh(db_message)
+        return db_message
 
-async def add_message_to_conversation(db: AsyncSession, conversation_id: UUID, message: MessageCreate) -> Message:
-    db_message = Message(
-        conversation_id=conversation_id,
-        content=message.content,
-        is_from_user=message.is_from_user
-    )
-    db.add(db_message)
-    await db.commit()
-    await db.refresh(db_message)
-    return db_message
+    async def get_messages(self, db: AsyncSession, *, conversation_id: UUID, skip: int = 0, limit: int = 100) -> List[Message]:
+        query = select(Message).where(Message.conversation_id == conversation_id).offset(skip).limit(limit)
+        result = await db.execute(query)
+        return result.scalars().all()
 
-async def get_messages(db: AsyncSession, conversation_id: UUID, skip: int = 0, limit: int = 100) -> List[Message]:
-    query = select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at).offset(skip).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
+    async def update_conversation(self, db: AsyncSession, *, db_obj: Conversation, obj_in: ConversationUpdate) -> Conversation:
+        update_data = obj_in.model_dump(exclude_unset=True)
+        return await super().update(db, db_obj=db_obj, obj_in=update_data)
 
-async def update_conversation_last_activity(db: AsyncSession, conversation_id: UUID):
-    await db.execute(
-        update(Conversation)
-        .where(Conversation.id == conversation_id)
-        .values(updated_at=datetime.now())
-    )
-    await db.commit()
+    async def set_analyzed(self, db: AsyncSession, *, conversation_id: UUID, is_analyzed: bool) -> Conversation:
+        conversation = await self.get(db, id=conversation_id)
+        if conversation:
+            conversation.is_analyzed = is_analyzed
+            await db.commit()
+            await db.refresh(conversation)
+        return conversation
 
-async def deactivate_old_conversations(db: AsyncSession, hours: int = 24):
-    cutoff_time = datetime.now() - timedelta(hours=hours)
-    await db.execute(
-        update(Conversation)
-        .where(and_(Conversation.is_active == True, Conversation.updated_at < cutoff_time))
-        .values(is_active=False)
-    )
-    await db.commit()
+    async def set_active(self, db: AsyncSession, *, conversation_id: UUID, is_active: bool) -> Conversation:
+        conversation = await self.get(db, id=conversation_id)
+        if conversation:
+            conversation.is_active = is_active
+            await db.commit()
+            await db.refresh(conversation)
+        return conversation
 
-async def get_recent_conversations(db: AsyncSession, discord_id: int, limit: int = 10) -> List[Conversation]:
-    query = (
-        select(Conversation)
-        .join(User)
-        .where(User.discord_id == discord_id)
-        .order_by(Conversation.updated_at.desc())
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    return result.scalars().all()
-
-async def get_conversations_by_topics(db: AsyncSession, discord_id: int, topics: List[str], limit: int = 10) -> List[Conversation]:
-    query = (
-        select(Conversation)
-        .join(User)
-        .where(and_(
-            User.discord_id == discord_id,
-            Conversation.topics.overlap(topics)
-        ))
-        .order_by(Conversation.updated_at.desc())
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    return result.scalars().all()
-
-async def get_conversations_by_recency_and_topics(
-    db: AsyncSession, 
-    discord_id: int, 
-    topics: Optional[List[str]] = None, 
-    days: int = 7, 
-    limit: int = 10
-) -> List[Conversation]:
-    cutoff_date = datetime.now() - timedelta(days=days)
-    query = (
-        select(Conversation)
-        .join(User)
-        .where(and_(
-            User.discord_id == discord_id,
-            Conversation.updated_at >= cutoff_date
-        ))
-    )
-    
-    if topics:
-        query = query.where(Conversation.topics.overlap(topics))
-    
-    query = query.order_by(Conversation.updated_at.desc()).limit(limit)
-    
-    result = await db.execute(query)
-    return result.scalars().all()
-
-async def update_conversation_analysis_status(db: AsyncSession, conversation_id: UUID, is_analyzed: bool) -> Optional[Conversation]:
-    db_conversation = await get_conversation(db, conversation_id)
-    if db_conversation is None:
-        return None
-    
-    db_conversation.is_analyzed = is_analyzed
-    await db.commit()
-    await db.refresh(db_conversation)
-    return db_conversation
-
-async def get_unanalyzed_conversations(db: AsyncSession, limit: int = 100) -> List[Conversation]:
-    query = select(Conversation).where(Conversation.is_analyzed == False).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
+conversation = CRUDConversation(Conversation)

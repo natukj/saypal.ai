@@ -10,8 +10,9 @@ from db.base_class import Base
 
 class Conversation(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
-    dm_channel_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
+    user_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    discord_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True, index=True)
+    dm_channel_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False, server_default='')
     topics: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, server_default='{}')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -19,8 +20,9 @@ class Conversation(Base):
     is_analyzed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    user: Mapped["User"] = relationship("User", back_populates="conversations")
+    user: Mapped["User"] = relationship("User", back_populates="conversations", foreign_keys=[user_id])
     messages: Mapped[List["Message"]] = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+    memories: Mapped[List["Memory"]] = relationship("Memory", back_populates="conversation", cascade="all, delete-orphan")
 
 class Message(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid4)
@@ -32,3 +34,4 @@ class Message(Base):
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
 
 from models.user import User
+from models.memory import Memory

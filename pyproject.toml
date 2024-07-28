@@ -16,6 +16,11 @@ asyncpg = "^0.29.0"
 alembic = "^1.13.2"
 python-dotenv = "^1.0.1"
 discord-py = "^2.4.0"
+passlib = "^1.7.4"
+python-jose = "^3.3.0"
+argon2-cffi = "^23.1.0"
+pydantic-settings = "^2.3.4"
+greenlet = "^3.0.3"
 
 
 [build-system]

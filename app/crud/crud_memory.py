@@ -1,58 +1,68 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from typing import List, Optional, Union
 from uuid import UUID
-from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
+from datetime import datetime
 
+from crud.crud_base import CRUDBase
+from models.user import User
 from models.memory import Memory
 from schemas.memory import MemoryCreate, MemoryUpdate
 
-async def create_memory(db: AsyncSession, memory: MemoryCreate, user_id: UUID) -> Memory:
-    db_memory = Memory(
-        user_id=user_id,
-        content=memory.content,
-        importance=memory.importance
-    )
-    db.add(db_memory)
-    await db.commit()
-    await db.refresh(db_memory)
-    return db_memory
-
-async def get_memory(db: AsyncSession, memory_id: UUID) -> Optional[Memory]:
-    query = select(Memory).where(Memory.id == memory_id)
-    result = await db.execute(query)
-    return result.scalar_one_or_none()
-
-async def get_memories(db: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100) -> List[Memory]:
-    query = select(Memory).where(Memory.user_id == user_id).offset(skip).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
-
-async def get_important_memories(db: AsyncSession, user_id: UUID, importance_threshold: int, limit: int = 10) -> List[Memory]:
-    query = select(Memory).where(
-        Memory.user_id == user_id,
-        Memory.importance >= importance_threshold
-    ).order_by(Memory.importance.desc()).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
-
-async def update_memory(db: AsyncSession, memory_id: UUID, memory_update: MemoryUpdate) -> Optional[Memory]:
-    db_memory = await get_memory(db, memory_id)
-    if db_memory is None:
-        return None
+class CRUDMemory(CRUDBase[Memory, MemoryCreate, MemoryUpdate]):
+    async def create_with_user(self, db: AsyncSession, *, obj_in: MemoryCreate) -> Memory:
+        user_id, discord_id = await self.get_user_info(db, obj_in.user_identifier)
+        db_obj = Memory(
+            user_id=user_id,
+            discord_id=discord_id,
+            conversation_id=obj_in.conversation_id,
+            content=obj_in.content,
+            importance=obj_in.importance
+        )
+        db.add(db_obj)
+        await db.commit()
+        await db.refresh(db_obj)
+        return db_obj
     
-    update_data = memory_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(db_memory, field, value)
-    
-    await db.commit()
-    await db.refresh(db_memory)
-    return db_memory
+    async def get_user_info(self, db: AsyncSession, user_identifier: Union[UUID, int]) -> tuple[UUID, Optional[int]]:
+        if isinstance(user_identifier, UUID):
+            stmt = select(User.id, User.discord_id).where(User.id == user_identifier)
+        else:
+            stmt = select(User.id, User.discord_id).where(User.discord_id == user_identifier)
+        
+        result = await db.execute(stmt)
+        user_info = result.first()
+        
+        if user_info is None:
+            raise ValueError(f"No user found with identifier {user_identifier}")
+        
+        return user_info.id, user_info.discord_id
 
-async def delete_memory(db: AsyncSession, memory_id: UUID) -> bool:
-    db_memory = await get_memory(db, memory_id)
-    if db_memory is None:
-        return False
-    
-    await db.delete(db_memory)
-    await db.commit()
-    return True
+    async def get_by_user(self, db: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100) -> List[Memory]:
+        query = select(Memory).where(Memory.user_id == user_id).offset(skip).limit(limit)
+        result = await db.execute(query)
+        return result.scalars().all()
+
+    async def get_by_conversation(self, db: AsyncSession, conversation_id: UUID) -> List[Memory]:
+        query = select(Memory).where(Memory.conversation_id == conversation_id)
+        result = await db.execute(query)
+        return result.scalars().all()
+
+    async def get_by_importance(self, db: AsyncSession, user_id: UUID, min_importance: int) -> List[Memory]:
+        query = select(Memory).where(and_(Memory.user_id == user_id, Memory.importance >= min_importance))
+        result = await db.execute(query)
+        return result.scalars().all()
+
+    async def update_memory(self, db: AsyncSession, *, db_obj: Memory, obj_in: MemoryUpdate) -> Memory:
+        update_data = obj_in.model_dump(exclude_unset=True)
+        return await super().update(db, db_obj=db_obj, obj_in=update_data)
+
+    async def access_memory(self, db: AsyncSession, memory_id: UUID) -> Optional[Memory]:
+        memory = await self.get(db, id=memory_id)
+        if memory:
+            memory.last_accessed_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(memory)
+        return memory
+
+memory = CRUDMemory(Memory)

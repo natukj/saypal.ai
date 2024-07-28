@@ -1,6 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from uuid import UUID
 
 class MessageBase(BaseModel):
@@ -18,9 +17,11 @@ class Message(MessageBase):
 
 class ConversationBase(BaseModel):
     dm_channel_id: Optional[int] = None
+    title: Optional[str] = None
+    topics: Optional[List[str]] = None
 
 class ConversationCreate(ConversationBase):
-    pass
+    user_identifier: Union[UUID, int]
 
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
@@ -32,6 +33,7 @@ class ConversationUpdate(BaseModel):
 class Conversation(ConversationBase):
     id: UUID
     user_id: UUID
+    discord_id: Optional[int] = None
     is_active: bool
     messages: List[Message] = []
 
