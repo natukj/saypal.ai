@@ -3,6 +3,7 @@ from sqlalchemy import String, DateTime, ForeignKey, ARRAY, Boolean, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
+from uuid import UUID as UUIDType
 from uuid import uuid4
 from typing import List, Optional
 
@@ -32,6 +33,9 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
+    media_id: Mapped[Optional[UUIDType]] = mapped_column(UUID(as_uuid=True), ForeignKey("media.id"), nullable=True)
+    media: Mapped[Optional["Media"]] = relationship("Media")
 
 from models.user import User
 from models.memory import Memory
+from models.media import Media
